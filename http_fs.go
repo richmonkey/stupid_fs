@@ -5,10 +5,33 @@ import "os"
 import "log"
 import "io"
 import "net/http"
+import "syscall"
+import "path/filepath"
 
 const BLOCK_SIZE = 4*1024
 //const ROOT = "/Users/houxh/centos_dev/stupid_fs/data"
-const ROOT = "/tmp"
+const ROOT = "/tmp/fs"
+
+func create_file(path string) (*os.File, error) {
+    file, err := os.Create(path)
+    if err != nil {
+        e, _ := err.(*os.PathError)
+        errno, _ :=  e.Err.(syscall.Errno)
+        if errno == syscall.ENOTDIR || errno == syscall.ENOENT {
+            dir, _ := filepath.Split(path)
+            err = os.MkdirAll(dir, 0777)
+            if err == nil {
+                file, err = os.Create(path)
+                return file, err
+            } else {
+                return nil, err
+            }
+        } else {
+            return nil, err
+        }
+    }
+    return file, nil
+}
 
 func handle_upload(w http.ResponseWriter, r *http.Request) {
     var n int64
@@ -17,8 +40,8 @@ func handle_upload(w http.ResponseWriter, r *http.Request) {
 
     //7==len("/upload")
     path := ROOT + r.URL.Path[7:]
-
-    file, err := os.Create(path)
+    
+    file, err := create_file(path)
     if err != nil {
         fmt.Println("create path error:", err)
         goto Error
