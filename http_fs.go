@@ -7,10 +7,12 @@ import "io"
 import "net/http"
 import "syscall"
 import "path/filepath"
+import "strconv"
+import "github.com/jimlawless/cfg"
 
 const BLOCK_SIZE = 4*1024
-//const ROOT = "/Users/houxh/centos_dev/stupid_fs/data"
-const ROOT = "/tmp/fs"
+var ROOT = "/tmp/fs"
+var PORT = 8080
 
 func create_file(path string) (*os.File, error) {
     file, err := os.Create(path)
@@ -60,10 +62,38 @@ Error:
     w.WriteHeader(400)
 }
 
+func read_cfg() {
+    app_cfg := make(map[string]string)
+	err := cfg.Load("fs.cfg", app_cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+    root, present := app_cfg["root"]
+    if !present {
+        fmt.Println("need config root directory")
+        os.Exit(1)
+    }
+    ROOT = root
+
+    port, present := app_cfg["port"]
+    if !present {
+        fmt.Println("need config listen port")
+        os.Exit(1)
+    }
+    nport, err := strconv.Atoi(port)
+    if err != nil {
+        fmt.Println("need config listen port")
+        os.Exit(1)
+    }
+    PORT = nport
+	fmt.Printf("root:%s port:%d\n", ROOT, PORT)
+}
+
 func main() {
+    read_cfg()
     http.Handle("/", http.FileServer(http.Dir(ROOT)))
     http.HandleFunc("/upload/", handle_upload)
-
-    log.Fatal(http.ListenAndServe(":8080", nil))
+    addr := string(strconv.AppendInt([]byte(":"), int64(PORT), 10))
+    log.Fatal(http.ListenAndServe(addr, nil))
 }
 
