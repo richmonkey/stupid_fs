@@ -13,7 +13,7 @@ import "github.com/jimlawless/cfg"
 const BLOCK_SIZE = 4*1024
 var ROOT = "/tmp/fs"
 var PORT = 8080
-
+var BIND_ADDR = ""
 func create_file(path string) (*os.File, error) {
     file, err := os.Create(path)
     if err != nil {
@@ -86,14 +86,17 @@ func read_cfg() {
         os.Exit(1)
     }
     PORT = nport
-	fmt.Printf("root:%s port:%d\n", ROOT, PORT)
+    if _, present = app_cfg["bind_addr"]; present {
+        BIND_ADDR = app_cfg["bind_addr"]
+    }
+	fmt.Printf("root:%s bind addr:%s port:%d\n", ROOT, BIND_ADDR, PORT)
 }
 
 func main() {
     read_cfg()
     http.Handle("/", http.FileServer(http.Dir(ROOT)))
     http.HandleFunc("/upload/", handle_upload)
-    addr := string(strconv.AppendInt([]byte(":"), int64(PORT), 10))
+    addr := fmt.Sprintf("%s:%d", BIND_ADDR, PORT)
     log.Fatal(http.ListenAndServe(addr, nil))
 }
 
