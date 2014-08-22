@@ -2,64 +2,51 @@
 
 import socket
 import struct
+import sys
+import requests
+import time
 
-COMMAND_UPLOAD  = 1
-COMMAND_DOWNLOAD = 2
+class config:
+    FS_PATH = "http://172.25.1.111:8080"
 
 class FS:
-    def __init__(self):
-        self.server_address = ('10.0.0.48', 23000)
-    
-    def download(self, path):
-        buf = struct.pack("!iB", COMMAND_DOWNLOAD, len(path))
-        buf += path
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  
-        s.connect(self.server_address)  
-        s.sendall(buf)
-
-        buf = s.recv(4)
-        if len(buf) != 4:
-            return ""
-
-        size, = struct.unpack("!i", buf)
-
-        left = size
-        content = ""
-        while left:
-            resp = s.recv(1024*4)
-            if not resp:
-                break
-            content += resp
-            left -= len(resp)
-
-        s.close()
-        if len(content) != size:
-            return ""
-        else:
-            return content
-
+    @classmethod
     def upload(self, path, data):
-        buf = struct.pack("!iB", COMMAND_UPLOAD, len(path))
-        buf += path
+        resp = requests.post(config.FS_PATH + '/upload' + path, data)
+        return resp.status_code == 200
 
-        size = len(data)
-        buf += struct.pack("!i", size)
-        buf += data
+    @classmethod
+    def download(self, path):
+        resp = requests.get(config.FS_PATH + path)
+        return resp.content if resp.status_code == 200 else ''
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  
-        s.connect(self.server_address)  
-        s.sendall(buf)
-        resp = s.recv(4)
-        r, = struct.unpack('!i', resp)
-        return r
-
-
+    @classmethod
+    def upload_range(self, path, data, r):
+        headers = {"Range":"bytes=%d-%d"%(r[0], r[1])}
+        resp = requests.post(config.FS_PATH + '/range_upload' + path, data, headers=headers)
+        return resp.status_code == 200
+        
 if __name__ == "__main__":
     import os
     fs = FS()
+    fs.upload_range("/test_range", "1111", (8, 11))
+    fs.upload_range("/test_range", "11111111", (0, 7))
+
     p = os.path.abspath(__file__)
-    f = open(p)
+    f = open("/tmp/test", "wb")
+    
+    FILE_SIZE = 600*1024
+    f.seek(FILE_SIZE - 1)
+    f.write("1")
+    f.close()
+    f = open("/tmp/test", "rb")
     data = f.read()
-    #print fs.upload("/test", data)
-    print fs.download("/test")
+    print len(data)
+    b = time.time()
+    fs.upload("/test", data)
+    e = time.time()
+    print "time:", e-b
+    print len(fs.download("/test"))
     #vvvvvvmmxxxmmm
+
+
