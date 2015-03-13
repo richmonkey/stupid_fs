@@ -154,9 +154,9 @@ Error:
     w.WriteHeader(400)
 }
 
-func read_cfg() {
+func read_cfg(path string) {
     app_cfg := make(map[string]string)
-	err := cfg.Load("fs.cfg", app_cfg)
+	err := cfg.Load(path, app_cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -185,7 +185,11 @@ func read_cfg() {
 }
 
 func main() {
-    read_cfg()
+	if (len(os.Args) < 2) {
+		log.Println("usage:http_fs config")
+		return
+	}
+    read_cfg(os.Args[1])
     http.Handle("/", http.FileServer(http.Dir(ROOT)))
     http.HandleFunc("/upload/", handle_upload)
     http.HandleFunc("/range_upload/", handle_range_upload)
