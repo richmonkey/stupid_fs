@@ -2,7 +2,6 @@ package main
 
 import "fmt"
 import "os"
-import "log"
 import "io"
 import "net/http"
 import "syscall"
@@ -10,6 +9,10 @@ import "path/filepath"
 import "strconv"
 import "github.com/jimlawless/cfg"
 import "strings"
+import "runtime"
+import "flag"
+import log "github.com/golang/glog"
+
 
 const BLOCK_SIZE = 4*1024
 var ROOT = "/tmp/fs"
@@ -67,12 +70,12 @@ func handle_upload(w http.ResponseWriter, r *http.Request) {
     
     file, err := create_file(path)
     if err != nil {
-        fmt.Println("create path error:", err)
+        log.Info("create path error:", err)
         goto Error
     }
     defer file.Close()
     
-    fmt.Printf("upload path:%s\n", path)
+    log.Infof("upload path:%s\n", path)
     
     n, err = io.CopyN(file, body, len)
     if err != nil || n != len {
@@ -87,7 +90,7 @@ Error:
 func parse_range(header http.Header) (int64, int64){
     region := header.Get("Range")
     if region == "" {
-        fmt.Println("no range header")
+        log.Info("no range header")
         return -1, -1
     }
     index := strings.Index(region, "bytes=")
@@ -122,25 +125,25 @@ func handle_range_upload(w http.ResponseWriter, r *http.Request) {
 
     file, err := open_file(path)
     if err != nil {
-        fmt.Println("create path error:", err)
+        log.Info("create path error:", err)
         goto Error
     }
     defer file.Close()
-    fmt.Printf("upload path:%s\n", path)
+    log.Info("upload path:%s\n", path)
 
     begin, end = parse_range(r.Header)
     if begin == -1 && end == -1 {
-        fmt.Println("no range header")
+        log.Info("no range header")
         goto Error
     }
     if (end - begin + 1 != len) {
-        fmt.Println("content length not equal range")
+        log.Info("content length not equal range")
         goto Error
     }
 
     _, err = file.Seek(begin, os.SEEK_SET)
     if err != nil {
-        fmt.Println("seek error", err)
+        log.Info("seek error", err)
         goto Error
     }
 
@@ -148,6 +151,46 @@ func handle_range_upload(w http.ResponseWriter, r *http.Request) {
     if err != nil || n != len {
         goto Error
     }
+    w.WriteHeader(http.StatusOK)
+    return
+Error:
+    w.WriteHeader(400)
+}
+
+func handle_mv(w http.ResponseWriter, r *http.Request) {
+	var err error
+	src := r.FormValue("src")
+	dst := r.FormValue("dst")
+	if src == "" || dst == "" {
+		log.Infof("rename err:%s %s", src, dst)
+		goto Error
+	}
+	
+	src = ROOT + src
+	dst = ROOT + dst
+	log.Infof("rename:%s %s", src, dst)
+	
+	err = os.Rename(src, dst)
+	if err != nil {
+		log.Infof("rename err:", err)
+		goto Error
+	}
+    w.WriteHeader(http.StatusOK)
+    return
+Error:
+    w.WriteHeader(400)
+
+}
+
+func handle_del(w http.ResponseWriter, r *http.Request) {
+    //7==len("/remove")
+    path := ROOT + r.URL.Path[7:]
+	err := os.Remove(path)
+	if err != nil {
+		log.Info("remove error:", err)
+		goto Error
+	}
+	log.Info("remove:", path)
     w.WriteHeader(http.StatusOK)
     return
 Error:
@@ -162,37 +205,44 @@ func read_cfg(path string) {
 	}
     root, present := app_cfg["root"]
     if !present {
-        fmt.Println("need config root directory")
+        log.Info("need config root directory")
         os.Exit(1)
     }
     ROOT = root
 
     port, present := app_cfg["port"]
     if !present {
-        fmt.Println("need config listen port")
+        log.Info("need config listen port")
         os.Exit(1)
     }
     nport, err := strconv.Atoi(port)
     if err != nil {
-        fmt.Println("need config listen port")
+        log.Info("need config listen port")
         os.Exit(1)
     }
     PORT = nport
     if _, present = app_cfg["bind_addr"]; present {
         BIND_ADDR = app_cfg["bind_addr"]
     }
-	fmt.Printf("root:%s bind addr:%s port:%d\n", ROOT, BIND_ADDR, PORT)
+	log.Info("root:%s bind addr:%s port:%d\n", ROOT, BIND_ADDR, PORT)
 }
 
 func main() {
-	if (len(os.Args) < 2) {
-		log.Println("usage:http_fs config")
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	flag.Parse()
+	if len(flag.Args()) == 0 {
+		log.Info("usage:http_fs config")
 		return
 	}
-    read_cfg(os.Args[1])
+
+    read_cfg(flag.Args()[0])
+
     http.Handle("/", http.FileServer(http.Dir(ROOT)))
     http.HandleFunc("/upload/", handle_upload)
     http.HandleFunc("/range_upload/", handle_range_upload)
+	http.HandleFunc("/remove/", handle_del)
+	http.HandleFunc("/rename", handle_mv)
+
     addr := fmt.Sprintf("%s:%d", BIND_ADDR, PORT)
     log.Fatal(http.ListenAndServe(addr, nil))
 }
