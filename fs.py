@@ -37,10 +37,16 @@ class FS:
     def remove(self, path):
         resp = requests.delete(config.FS_PATH + '/remove' + path)
         return resp.status_code == 200
+
+    @classmethod
+    def exists(self, path):
+        url = config.FS_PATH + path        
+        resp = requests.head(url)
+        return (resp.status_code == 200)
         
 if __name__ == "__main__":
     import os
-    config.FS_PATH = "http://localhost:8083"
+    config.FS_PATH = "http://192.168.33.10:8083"
     fs = FS()
     fs.upload_range("/test_range", "1111", (8, 11))
     fs.upload_range("/test_range", "11111111", (0, 7))
@@ -60,10 +66,12 @@ if __name__ == "__main__":
     e = time.time()
     print "time:", e-b
     print len(fs.download("/test"))
-
+    print "exists:", fs.exists("/test")
+    print "exists:", fs.exists("/test2")    
     print fs.rename("/test", "/test2")
     print fs.remove("/test2")
-    
+
+
     #vvvvvvmmxxxmmm
 
 
